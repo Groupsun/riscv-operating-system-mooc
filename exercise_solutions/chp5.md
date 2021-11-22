@@ -571,3 +571,793 @@ stop:
     j stop
 80000020:       0000006f                j       80000020 <stop>
 ```
+
+## 练习5-5
+
+假设有如下这么⼀段 C 代码：
+
+```c
+int array[2] = {0x11111111, 0xffffffff};
+int i = array[0];
+int j = array[1];
+```
+
+尝试⽤汇编语句实现等效的功能。编写汇编代码`test.s`：
+
+```
+# Correspoding C program:
+# int array[2] = {0x11111111, 0xffffffff};
+# int i = array[0];
+# int j = array[1];
+
+    .text
+    .global _start
+
+_start:
+    la x5, _array
+    lw x6, 0(x5)        # int i = array[0]
+    lw x7, 4(x5)        # int j = array[1]
+
+stop:
+    j stop
+
+_array:
+    .word 0x11111111
+    .word 0xffffffff
+
+    .end
+```
+
+调试：
+
+```bash
+$ make debug
+Press Ctrl-C and then input 'quit' to exit GDB and QEMU
+-------------------------------------------------------
+Reading symbols from test.elf...
+Breakpoint 1 at 0x80000000: file test.s, line 10.
+0x00001000 in ?? ()
+=> 0x00001000:  97 02 00 00     auipc   t0,0x0
+1: /z $x5 = 0x00000000
+2: /z $x6 = 0x00000000
+3: /z $x7 = 0x00000000
+
+Breakpoint 1, _start () at test.s:10
+10          la x5, _array
+=> 0x80000000 <_start+0>:       97 02 00 00     auipc   t0,0x0
+   0x80000004 <_start+4>:       93 82 42 01     addi    t0,t0,20 # 0x80000014 <_array>
+1: /z $x5 = 0x80000000
+2: /z $x6 = 0x00000000
+3: /z $x7 = 0x00000000
+(gdb) si
+0x80000004      10          la x5, _array
+   0x80000000 <_start+0>:       97 02 00 00     auipc   t0,0x0
+=> 0x80000004 <_start+4>:       93 82 42 01     addi    t0,t0,20 # 0x80000014 <_array>
+1: /z $x5 = 0x80000000
+2: /z $x6 = 0x00000000
+3: /z $x7 = 0x00000000
+(gdb) 
+11          lw x6, 0(x5)        # int i = array[0]
+=> 0x80000008 <_start+8>:       03 a3 02 00     lw      t1,0(t0)
+1: /z $x5 = 0x80000014
+2: /z $x6 = 0x00000000
+3: /z $x7 = 0x00000000
+(gdb) 
+12          lw x7, 4(x5)        # int j = array[1]
+=> 0x8000000c <_start+12>:      83 a3 42 00     lw      t2,4(t0)
+1: /z $x5 = 0x80000014
+2: /z $x6 = 0x11111111
+3: /z $x7 = 0x00000000
+(gdb) 
+stop () at test.s:15
+15          j stop
+=> 0x80000010 <stop+0>: 6f 00 00 00     j       0x80000010 <stop>
+   0x80000014 <_array+0>:       11 11   addi    sp,sp,-28
+   0x80000016 <_array+2>:       11 11   addi    sp,sp,-28
+   0x80000018 <_array+4>:       ff ff   0xffff
+   0x8000001a <_array+6>:       ff ff   0xffff
+1: /z $x5 = 0x80000014
+2: /z $x6 = 0x11111111
+3: /z $x7 = 0xffffffff
+(gdb) q
+A debugging session is active.
+
+        Inferior 1 [process 1] will be detached.
+
+Quit anyway? (y or n) y
+Detaching from program: /home/server/Documents/riscv-operating-system-mooc/code/asm/exer55/test.elf, process 1
+Ending remote debugging.
+[Inferior 1 (process 1) detached]
+```
+
+## 练习5-6
+
+在内存中定义⼀个结构体变量，编写汇编程序，⽤宏⽅式（.macro/.endm）实现对结构体变量的成员赋值以及 读取该结构体变量的成员的值到寄存器变量中。等价的 c 语⾔的⽰例代码如下，供参考：
+
+```c
+struct S { unsigned int a; unsigned int b; };
+struct S s = {0};
+#define set_struct(s) \
+s.a = a; \
+s.b = b;
+#define get_struct(s) \
+a = s.a; \
+b = s.b;
+void foo() {
+	register unsigned int a = 0x12345678; 
+	register unsigned int b = 0x87654321; 
+	set_struct(s);
+	a = 0;
+	b = 0;
+	get_struct(s);
+}
+```
+
+编写汇编代码`test.s`：
+
+```
+# Correspoding C program:
+# struct S { unsigned int a; unsigned int b; };
+# struct S s = {0};
+# #define set_struct(s) \
+# s.a = a; \
+# s.b = b;
+# #define get_struct(s) \
+# a = s.a; \
+# b = s.b;
+# void foo() {
+# register unsigned int a = 0x12345678; 
+# register unsigned int b = 0x87654321; 
+# set_struct(s);
+# a = 0;
+# b = 0;
+# get_struct(s);
+# }
+# a is in x5, b is in x6, s.a is in x7, s.b is in x8
+
+    .text
+    .global _start
+
+.macro set_struct
+    mv x7, x5
+    mv x8, x6
+.endm
+
+.macro get_struct
+    mv x5, x7
+    mv x6, x8
+.endm
+
+_start:
+    li x5, 0x12345678       # a = 0x12345678
+    li x6, 0x87654321       # b = 0x87654321
+    set_struct
+    li x5, 0
+    li x6, 0
+    get_struct
+
+stop:
+    j stop
+
+    .end
+```
+
+调试：
+
+```bash
+$ make debug
+Press Ctrl-C and then input 'quit' to exit GDB and QEMU
+-------------------------------------------------------
+Reading symbols from test.elf...
+Breakpoint 1 at 0x80000000: file test.s, line 34.
+0x00001000 in ?? ()
+=> 0x00001000:  97 02 00 00     auipc   t0,0x0
+1: /z $x5 = 0x00000000
+2: /z $x6 = 0x00000000
+3: /z $x7 = 0x00000000
+4: /z $x8 = 0x00000000
+--Type <RET> for more, q to quit, c to continue without paging--
+
+Breakpoint 1, _start () at test.s:34
+34          li x5, 0x12345678       # a = 0x12345678
+=> 0x80000000 <_start+0>:       b7 52 34 12     lui     t0,0x12345
+   0x80000004 <_start+4>:       93 82 82 67     addi    t0,t0,1656 # 0x12345678
+1: /z $x5 = 0x80000000
+2: /z $x6 = 0x00000000
+3: /z $x7 = 0x00000000
+4: /z $x8 = 0x00000000
+(gdb) si
+0x80000004      34          li x5, 0x12345678       # a = 0x12345678
+   0x80000000 <_start+0>:       b7 52 34 12     lui     t0,0x12345
+=> 0x80000004 <_start+4>:       93 82 82 67     addi    t0,t0,1656 # 0x12345678
+1: /z $x5 = 0x12345000
+2: /z $x6 = 0x00000000
+3: /z $x7 = 0x00000000
+4: /z $x8 = 0x00000000
+(gdb) 
+35          li x6, 0x87654321       # b = 0x87654321
+=> 0x80000008 <_start+8>:       37 43 65 87     lui     t1,0x87654
+   0x8000000c <_start+12>:      13 03 13 32     addi    t1,t1,801 # 0x87654321
+1: /z $x5 = 0x12345678
+2: /z $x6 = 0x00000000
+3: /z $x7 = 0x00000000
+4: /z $x8 = 0x00000000
+(gdb) 
+0x8000000c      35          li x6, 0x87654321       # b = 0x87654321
+   0x80000008 <_start+8>:       37 43 65 87     lui     t1,0x87654
+=> 0x8000000c <_start+12>:      13 03 13 32     addi    t1,t1,801 # 0x87654321
+1: /z $x5 = 0x12345678
+2: /z $x6 = 0x87654000
+3: /z $x7 = 0x00000000
+4: /z $x8 = 0x00000000
+(gdb) 
+36          set_struct
+=> 0x80000010 <_start+16>:      93 83 02 00     mv      t2,t0
+   0x80000014 <_start+20>:      13 04 03 00     mv      s0,t1
+1: /z $x5 = 0x12345678
+2: /z $x6 = 0x87654321
+3: /z $x7 = 0x00000000
+4: /z $x8 = 0x00000000
+(gdb) 
+0x80000014      36          set_struct
+   0x80000010 <_start+16>:      93 83 02 00     mv      t2,t0
+=> 0x80000014 <_start+20>:      13 04 03 00     mv      s0,t1
+1: /z $x5 = 0x12345678
+2: /z $x6 = 0x87654321
+3: /z $x7 = 0x12345678
+4: /z $x8 = 0x00000000
+(gdb) 
+37          li x5, 0
+=> 0x80000018 <_start+24>:      93 02 00 00     li      t0,0
+1: /z $x5 = 0x12345678
+2: /z $x6 = 0x87654321
+3: /z $x7 = 0x12345678
+4: /z $x8 = 0x87654321
+(gdb) 
+38          li x6, 0
+=> 0x8000001c <_start+28>:      13 03 00 00     li      t1,0
+1: /z $x5 = 0x00000000
+2: /z $x6 = 0x87654321
+3: /z $x7 = 0x12345678
+4: /z $x8 = 0x87654321
+(gdb) 
+39          get_struct
+=> 0x80000020 <_start+32>:      93 82 03 00     mv      t0,t2
+   0x80000024 <_start+36>:      13 03 04 00     mv      t1,s0
+1: /z $x5 = 0x00000000
+2: /z $x6 = 0x00000000
+3: /z $x7 = 0x12345678
+4: /z $x8 = 0x87654321
+(gdb) 
+0x80000024      39          get_struct
+   0x80000020 <_start+32>:      93 82 03 00     mv      t0,t2
+=> 0x80000024 <_start+36>:      13 03 04 00     mv      t1,s0
+1: /z $x5 = 0x12345678
+2: /z $x6 = 0x00000000
+3: /z $x7 = 0x12345678
+4: /z $x8 = 0x87654321
+(gdb) 
+stop () at test.s:42
+42          j stop
+=> 0x80000028 <stop+0>: 6f 00 00 00     j       0x80000028 <stop>
+1: /z $x5 = 0x12345678
+2: /z $x6 = 0x87654321
+3: /z $x7 = 0x12345678
+4: /z $x8 = 0x87654321
+(gdb) q
+A debugging session is active.
+
+        Inferior 1 [process 1] will be detached.
+
+Quit anyway? (y or n) y
+Detaching from program: /home/server/Documents/riscv-operating-system-mooc/code/asm/exer56/test.elf, process 1
+Ending remote debugging.
+[Inferior 1 (process 1) detached]
+```
+
+## 练习5-7
+
+编写汇编指令，使⽤条件分⽀指令循环遍历⼀个字符串数组， 获取该字符串的⻓度。等价的 c 语⾔的⽰例代码 如下，供参考：
+
+```c
+char array[] = {'h', 'e', 'l', 'l', 'o', ',', 'w', 'o', 'r', 'l', 'd', '!', '\0'};
+int len = 0;
+while (array[len] != '\0') { len++; }
+```
+
+汇编代码如下`test.s`：
+
+```
+# Correspoding C program:
+# char array[] = {'h', 'e', 'l', 'l', 'o', ',', 'w', 'o', 'r', 'l', 'd', '!', '\0'};
+# int len = 0;
+# while (array[len] != '\0') { len++; }
+
+    .text
+    .global _start
+
+_start:
+    li x5, 0        # len = 0
+    la x6, _array
+    lb x7, 0(x6)
+    li x8, '\0'
+    j judge
+acc:
+    addi x5, x5, 1
+    addi x6, x6, 1
+    lb x7, 0(x6)
+judge:
+    bne x7, x8, acc
+
+stop:
+    j stop
+
+_array:
+    .byte 'h'
+    .byte 'e'
+    .byte 'l'
+    .byte 'l'
+    .byte 'o'
+    .byte ','
+    .byte 'w'
+    .byte 'o'
+    .byte 'r'
+    .byte 'l'
+    .byte 'd'
+    .byte '!'
+    .byte '\0'
+
+    .end
+```
+
+调试：
+
+```bash
+$ make debug
+Press Ctrl-C and then input 'quit' to exit GDB and QEMU
+-------------------------------------------------------
+Reading symbols from test.elf...
+Breakpoint 1 at 0x80000000: file test.s, line 10.
+0x00001000 in ?? ()
+=> 0x00001000:  97 02 00 00     auipc   t0,0x0
+1: /z $x5 = 0x00000000
+2: /z $x6 = 0x00000000
+3: /z $x7 = 0x00000000
+4: /z $x8 = 0x00000000
+
+Breakpoint 1, _start () at test.s:10
+10          li x5, 0        # len = 0
+=> 0x80000000 <_start+0>:       93 02 00 00     li      t0,0
+1: /z $x5 = 0x80000000
+2: /z $x6 = 0x00000000
+3: /z $x7 = 0x00000000
+4: /z $x8 = 0x00000000
+(gdb) si
+11          la x6, _array
+=> 0x80000004 <_start+4>:       17 03 00 00     auipc   t1,0x0
+   0x80000008 <_start+8>:       13 03 83 02     addi    t1,t1,40 # 0x8000002c <_array>
+1: /z $x5 = 0x00000000
+2: /z $x6 = 0x00000000
+3: /z $x7 = 0x00000000
+4: /z $x8 = 0x00000000
+(gdb) 
+0x80000008      11          la x6, _array
+   0x80000004 <_start+4>:       17 03 00 00     auipc   t1,0x0
+=> 0x80000008 <_start+8>:       13 03 83 02     addi    t1,t1,40 # 0x8000002c <_array>
+1: /z $x5 = 0x00000000
+2: /z $x6 = 0x80000004
+3: /z $x7 = 0x00000000
+4: /z $x8 = 0x00000000
+(gdb) 
+12          lb x7, 0(x6)
+=> 0x8000000c <_start+12>:      83 03 03 00     lb      t2,0(t1)
+1: /z $x5 = 0x00000000
+2: /z $x6 = 0x8000002c
+3: /z $x7 = 0x00000000
+4: /z $x8 = 0x00000000
+(gdb) 
+13          li x8, '\0'
+=> 0x80000010 <_start+16>:      13 04 00 03     li      s0,48
+1: /z $x5 = 0x00000000
+2: /z $x6 = 0x8000002c
+3: /z $x7 = 0x00000068
+4: /z $x8 = 0x00000000
+(gdb) 
+14          j judge
+=> 0x80000014 <_start+20>:      6f 00 00 01     j       0x80000024 <judge>
+1: /z $x5 = 0x00000000
+2: /z $x6 = 0x8000002c
+3: /z $x7 = 0x00000068
+4: /z $x8 = 0x00000030
+(gdb) 
+judge () at test.s:20
+20          bne x7, x8, acc
+=> 0x80000024 <judge+0>:        e3 9a 83 fe     bne     t2,s0,0x80000018 <acc>
+1: /z $x5 = 0x00000000
+2: /z $x6 = 0x8000002c
+3: /z $x7 = 0x00000068
+4: /z $x8 = 0x00000030
+(gdb) 
+acc () at test.s:16
+16          addi x5, x5, 1
+=> 0x80000018 <acc+0>:  93 82 12 00     addi    t0,t0,1
+1: /z $x5 = 0x00000000
+2: /z $x6 = 0x8000002c
+3: /z $x7 = 0x00000068
+4: /z $x8 = 0x00000030
+(gdb) 
+17          addi x6, x6, 1
+=> 0x8000001c <acc+4>:  13 03 13 00     addi    t1,t1,1
+1: /z $x5 = 0x00000001
+2: /z $x6 = 0x8000002c
+3: /z $x7 = 0x00000068
+4: /z $x8 = 0x00000030
+(gdb) 
+18          lb x7, 0(x6)
+=> 0x80000020 <acc+8>:  83 03 03 00     lb      t2,0(t1)
+1: /z $x5 = 0x00000001
+2: /z $x6 = 0x8000002d
+3: /z $x7 = 0x00000068
+4: /z $x8 = 0x00000030
+(gdb) 
+judge () at test.s:20
+20          bne x7, x8, acc
+=> 0x80000024 <judge+0>:        e3 9a 83 fe     bne     t2,s0,0x80000018 <acc>
+1: /z $x5 = 0x00000001
+2: /z $x6 = 0x8000002d
+3: /z $x7 = 0x00000065
+4: /z $x8 = 0x00000030
+(gdb) 
+acc () at test.s:16
+16          addi x5, x5, 1
+=> 0x80000018 <acc+0>:  93 82 12 00     addi    t0,t0,1
+1: /z $x5 = 0x00000001
+2: /z $x6 = 0x8000002d
+3: /z $x7 = 0x00000065
+4: /z $x8 = 0x00000030
+(gdb) 
+17          addi x6, x6, 1
+=> 0x8000001c <acc+4>:  13 03 13 00     addi    t1,t1,1
+1: /z $x5 = 0x00000002
+2: /z $x6 = 0x8000002d
+3: /z $x7 = 0x00000065
+4: /z $x8 = 0x00000030
+(gdb) 
+18          lb x7, 0(x6)
+=> 0x80000020 <acc+8>:  83 03 03 00     lb      t2,0(t1)
+1: /z $x5 = 0x00000002
+2: /z $x6 = 0x8000002e
+3: /z $x7 = 0x00000065
+4: /z $x8 = 0x00000030
+(gdb) 
+judge () at test.s:20
+20          bne x7, x8, acc
+=> 0x80000024 <judge+0>:        e3 9a 83 fe     bne     t2,s0,0x80000018 <acc>
+1: /z $x5 = 0x00000002
+2: /z $x6 = 0x8000002e
+3: /z $x7 = 0x0000006c
+4: /z $x8 = 0x00000030
+(gdb) 
+acc () at test.s:16
+16          addi x5, x5, 1
+=> 0x80000018 <acc+0>:  93 82 12 00     addi    t0,t0,1
+1: /z $x5 = 0x00000002
+2: /z $x6 = 0x8000002e
+3: /z $x7 = 0x0000006c
+4: /z $x8 = 0x00000030
+(gdb) 
+17          addi x6, x6, 1
+=> 0x8000001c <acc+4>:  13 03 13 00     addi    t1,t1,1
+1: /z $x5 = 0x00000003
+2: /z $x6 = 0x8000002e
+3: /z $x7 = 0x0000006c
+4: /z $x8 = 0x00000030
+(gdb) 
+18          lb x7, 0(x6)
+=> 0x80000020 <acc+8>:  83 03 03 00     lb      t2,0(t1)
+1: /z $x5 = 0x00000003
+2: /z $x6 = 0x8000002f
+3: /z $x7 = 0x0000006c
+4: /z $x8 = 0x00000030
+(gdb) 
+judge () at test.s:20
+20          bne x7, x8, acc
+=> 0x80000024 <judge+0>:        e3 9a 83 fe     bne     t2,s0,0x80000018 <acc>
+1: /z $x5 = 0x00000003
+2: /z $x6 = 0x8000002f
+3: /z $x7 = 0x0000006c
+4: /z $x8 = 0x00000030
+(gdb) 
+acc () at test.s:16
+16          addi x5, x5, 1
+=> 0x80000018 <acc+0>:  93 82 12 00     addi    t0,t0,1
+1: /z $x5 = 0x00000003
+2: /z $x6 = 0x8000002f
+3: /z $x7 = 0x0000006c
+4: /z $x8 = 0x00000030
+(gdb) 
+17          addi x6, x6, 1
+=> 0x8000001c <acc+4>:  13 03 13 00     addi    t1,t1,1
+1: /z $x5 = 0x00000004
+2: /z $x6 = 0x8000002f
+3: /z $x7 = 0x0000006c
+4: /z $x8 = 0x00000030
+(gdb) 
+18          lb x7, 0(x6)
+=> 0x80000020 <acc+8>:  83 03 03 00     lb      t2,0(t1)
+1: /z $x5 = 0x00000004
+2: /z $x6 = 0x80000030
+3: /z $x7 = 0x0000006c
+4: /z $x8 = 0x00000030
+(gdb) 
+judge () at test.s:20
+20          bne x7, x8, acc
+=> 0x80000024 <judge+0>:        e3 9a 83 fe     bne     t2,s0,0x80000018 <acc>
+1: /z $x5 = 0x00000004
+2: /z $x6 = 0x80000030
+3: /z $x7 = 0x0000006f
+4: /z $x8 = 0x00000030
+(gdb) 
+acc () at test.s:16
+16          addi x5, x5, 1
+=> 0x80000018 <acc+0>:  93 82 12 00     addi    t0,t0,1
+1: /z $x5 = 0x00000004
+2: /z $x6 = 0x80000030
+3: /z $x7 = 0x0000006f
+4: /z $x8 = 0x00000030
+(gdb) 
+17          addi x6, x6, 1
+=> 0x8000001c <acc+4>:  13 03 13 00     addi    t1,t1,1
+1: /z $x5 = 0x00000005
+2: /z $x6 = 0x80000030
+3: /z $x7 = 0x0000006f
+4: /z $x8 = 0x00000030
+(gdb) 
+18          lb x7, 0(x6)
+=> 0x80000020 <acc+8>:  83 03 03 00     lb      t2,0(t1)
+1: /z $x5 = 0x00000005
+2: /z $x6 = 0x80000031
+3: /z $x7 = 0x0000006f
+4: /z $x8 = 0x00000030
+(gdb) 
+judge () at test.s:20
+20          bne x7, x8, acc
+=> 0x80000024 <judge+0>:        e3 9a 83 fe     bne     t2,s0,0x80000018 <acc>
+1: /z $x5 = 0x00000005
+2: /z $x6 = 0x80000031
+3: /z $x7 = 0x0000002c
+4: /z $x8 = 0x00000030
+(gdb) 
+acc () at test.s:16
+16          addi x5, x5, 1
+=> 0x80000018 <acc+0>:  93 82 12 00     addi    t0,t0,1
+1: /z $x5 = 0x00000005
+2: /z $x6 = 0x80000031
+3: /z $x7 = 0x0000002c
+4: /z $x8 = 0x00000030
+(gdb) 
+17          addi x6, x6, 1
+=> 0x8000001c <acc+4>:  13 03 13 00     addi    t1,t1,1
+1: /z $x5 = 0x00000006
+2: /z $x6 = 0x80000031
+3: /z $x7 = 0x0000002c
+4: /z $x8 = 0x00000030
+(gdb) 
+18          lb x7, 0(x6)
+=> 0x80000020 <acc+8>:  83 03 03 00     lb      t2,0(t1)
+1: /z $x5 = 0x00000006
+2: /z $x6 = 0x80000032
+3: /z $x7 = 0x0000002c
+4: /z $x8 = 0x00000030
+(gdb) 
+judge () at test.s:20
+20          bne x7, x8, acc
+=> 0x80000024 <judge+0>:        e3 9a 83 fe     bne     t2,s0,0x80000018 <acc>
+1: /z $x5 = 0x00000006
+2: /z $x6 = 0x80000032
+3: /z $x7 = 0x00000077
+4: /z $x8 = 0x00000030
+(gdb) 
+acc () at test.s:16
+16          addi x5, x5, 1
+=> 0x80000018 <acc+0>:  93 82 12 00     addi    t0,t0,1
+1: /z $x5 = 0x00000006
+2: /z $x6 = 0x80000032
+3: /z $x7 = 0x00000077
+4: /z $x8 = 0x00000030
+(gdb) 
+17          addi x6, x6, 1
+=> 0x8000001c <acc+4>:  13 03 13 00     addi    t1,t1,1
+1: /z $x5 = 0x00000007
+2: /z $x6 = 0x80000032
+3: /z $x7 = 0x00000077
+4: /z $x8 = 0x00000030
+(gdb) 
+18          lb x7, 0(x6)
+=> 0x80000020 <acc+8>:  83 03 03 00     lb      t2,0(t1)
+1: /z $x5 = 0x00000007
+2: /z $x6 = 0x80000033
+3: /z $x7 = 0x00000077
+4: /z $x8 = 0x00000030
+(gdb) 
+judge () at test.s:20
+20          bne x7, x8, acc
+=> 0x80000024 <judge+0>:        e3 9a 83 fe     bne     t2,s0,0x80000018 <acc>
+1: /z $x5 = 0x00000007
+2: /z $x6 = 0x80000033
+3: /z $x7 = 0x0000006f
+4: /z $x8 = 0x00000030
+(gdb) 
+acc () at test.s:16
+16          addi x5, x5, 1
+=> 0x80000018 <acc+0>:  93 82 12 00     addi    t0,t0,1
+1: /z $x5 = 0x00000007
+2: /z $x6 = 0x80000033
+3: /z $x7 = 0x0000006f
+4: /z $x8 = 0x00000030
+(gdb) 
+17          addi x6, x6, 1
+=> 0x8000001c <acc+4>:  13 03 13 00     addi    t1,t1,1
+1: /z $x5 = 0x00000008
+2: /z $x6 = 0x80000033
+3: /z $x7 = 0x0000006f
+4: /z $x8 = 0x00000030
+(gdb) 
+18          lb x7, 0(x6)
+=> 0x80000020 <acc+8>:  83 03 03 00     lb      t2,0(t1)
+1: /z $x5 = 0x00000008
+2: /z $x6 = 0x80000034
+3: /z $x7 = 0x0000006f
+4: /z $x8 = 0x00000030
+(gdb) 
+judge () at test.s:20
+20          bne x7, x8, acc
+=> 0x80000024 <judge+0>:        e3 9a 83 fe     bne     t2,s0,0x80000018 <acc>
+1: /z $x5 = 0x00000008
+2: /z $x6 = 0x80000034
+3: /z $x7 = 0x00000072
+4: /z $x8 = 0x00000030
+(gdb) 
+acc () at test.s:16
+16          addi x5, x5, 1
+=> 0x80000018 <acc+0>:  93 82 12 00     addi    t0,t0,1
+1: /z $x5 = 0x00000008
+2: /z $x6 = 0x80000034
+3: /z $x7 = 0x00000072
+4: /z $x8 = 0x00000030
+(gdb) 
+17          addi x6, x6, 1
+=> 0x8000001c <acc+4>:  13 03 13 00     addi    t1,t1,1
+1: /z $x5 = 0x00000009
+2: /z $x6 = 0x80000034
+3: /z $x7 = 0x00000072
+4: /z $x8 = 0x00000030
+(gdb) 
+18          lb x7, 0(x6)
+=> 0x80000020 <acc+8>:  83 03 03 00     lb      t2,0(t1)
+1: /z $x5 = 0x00000009
+2: /z $x6 = 0x80000035
+3: /z $x7 = 0x00000072
+4: /z $x8 = 0x00000030
+(gdb) 
+judge () at test.s:20
+20          bne x7, x8, acc
+=> 0x80000024 <judge+0>:        e3 9a 83 fe     bne     t2,s0,0x80000018 <acc>
+1: /z $x5 = 0x00000009
+2: /z $x6 = 0x80000035
+3: /z $x7 = 0x0000006c
+4: /z $x8 = 0x00000030
+(gdb) 
+acc () at test.s:16
+16          addi x5, x5, 1
+=> 0x80000018 <acc+0>:  93 82 12 00     addi    t0,t0,1
+1: /z $x5 = 0x00000009
+2: /z $x6 = 0x80000035
+3: /z $x7 = 0x0000006c
+4: /z $x8 = 0x00000030
+(gdb) 
+17          addi x6, x6, 1
+=> 0x8000001c <acc+4>:  13 03 13 00     addi    t1,t1,1
+1: /z $x5 = 0x0000000a
+2: /z $x6 = 0x80000035
+3: /z $x7 = 0x0000006c
+4: /z $x8 = 0x00000030
+(gdb) 
+18          lb x7, 0(x6)
+=> 0x80000020 <acc+8>:  83 03 03 00     lb      t2,0(t1)
+1: /z $x5 = 0x0000000a
+2: /z $x6 = 0x80000036
+3: /z $x7 = 0x0000006c
+4: /z $x8 = 0x00000030
+(gdb) 
+judge () at test.s:20
+20          bne x7, x8, acc
+=> 0x80000024 <judge+0>:        e3 9a 83 fe     bne     t2,s0,0x80000018 <acc>
+1: /z $x5 = 0x0000000a
+2: /z $x6 = 0x80000036
+3: /z $x7 = 0x00000064
+4: /z $x8 = 0x00000030
+(gdb) 
+acc () at test.s:16
+16          addi x5, x5, 1
+=> 0x80000018 <acc+0>:  93 82 12 00     addi    t0,t0,1
+1: /z $x5 = 0x0000000a
+2: /z $x6 = 0x80000036
+3: /z $x7 = 0x00000064
+4: /z $x8 = 0x00000030
+(gdb) 
+17          addi x6, x6, 1
+=> 0x8000001c <acc+4>:  13 03 13 00     addi    t1,t1,1
+1: /z $x5 = 0x0000000b
+2: /z $x6 = 0x80000036
+3: /z $x7 = 0x00000064
+4: /z $x8 = 0x00000030
+(gdb) 
+18          lb x7, 0(x6)
+=> 0x80000020 <acc+8>:  83 03 03 00     lb      t2,0(t1)
+1: /z $x5 = 0x0000000b
+2: /z $x6 = 0x80000037
+3: /z $x7 = 0x00000064
+4: /z $x8 = 0x00000030
+(gdb) 
+judge () at test.s:20
+20          bne x7, x8, acc
+=> 0x80000024 <judge+0>:        e3 9a 83 fe     bne     t2,s0,0x80000018 <acc>
+1: /z $x5 = 0x0000000b
+2: /z $x6 = 0x80000037
+3: /z $x7 = 0x00000021
+4: /z $x8 = 0x00000030
+(gdb) 
+acc () at test.s:16
+16          addi x5, x5, 1
+=> 0x80000018 <acc+0>:  93 82 12 00     addi    t0,t0,1
+1: /z $x5 = 0x0000000b
+2: /z $x6 = 0x80000037
+3: /z $x7 = 0x00000021
+4: /z $x8 = 0x00000030
+(gdb) 
+17          addi x6, x6, 1
+=> 0x8000001c <acc+4>:  13 03 13 00     addi    t1,t1,1
+1: /z $x5 = 0x0000000c
+2: /z $x6 = 0x80000037
+3: /z $x7 = 0x00000021
+4: /z $x8 = 0x00000030
+(gdb) 
+18          lb x7, 0(x6)
+=> 0x80000020 <acc+8>:  83 03 03 00     lb      t2,0(t1)
+1: /z $x5 = 0x0000000c
+2: /z $x6 = 0x80000038
+3: /z $x7 = 0x00000021
+4: /z $x8 = 0x00000030
+(gdb) 
+judge () at test.s:20
+20          bne x7, x8, acc
+=> 0x80000024 <judge+0>:        e3 9a 83 fe     bne     t2,s0,0x80000018 <acc>
+1: /z $x5 = 0x0000000c
+2: /z $x6 = 0x80000038
+3: /z $x7 = 0x00000030
+4: /z $x8 = 0x00000030
+(gdb) 
+stop () at test.s:23
+23          j stop
+=> 0x80000028 <stop+0>: 6f 00 00 00     j       0x80000028 <stop>
+   0x8000002c <_array+0>:       68 65   flw     fa0,76(a0)
+   0x8000002e <_array+2>:       6c 6c   flw     fa1,92(s0)
+   0x80000030 <_array+4>:       6f 2c 77 6f     jal     s8,0x80072f26
+   0x80000034 <_array+8>:       72 6c   flw     fs8,28(sp)
+   0x80000036 <_array+10>:      64 21   fld     fs1,192(a0)
+   0x80000038 <_array+12>:      30 00   addi    a2,sp,8
+1: /z $x5 = 0x0000000c
+2: /z $x6 = 0x80000038
+3: /z $x7 = 0x00000030
+4: /z $x8 = 0x00000030
+(gdb) q
+A debugging session is active.
+
+        Inferior 1 [process 1] will be detached.
+
+Quit anyway? (y or n) y
+Detaching from program: /home/server/Documents/riscv-operating-system-mooc/code/asm/exer57/test.elf, process 1
+Ending remote debugging.
+[Inferior 1 (process 1) detached]
+```
