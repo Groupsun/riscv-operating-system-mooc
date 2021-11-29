@@ -1446,26 +1446,26 @@ return:
     ret
 
 square:
-	# prologue
-	addi sp, sp, -8
-	sw s0, 0(sp)
-	sw s1, 4(sp)
+    # prologue
+    addi sp, sp, -8
+    sw s0, 0(sp)
+    sw s1, 4(sp)
 
-	# `mul a0, a0, a0` should be fine,
-	# programing as below just to demo we can contine use the stack
-	mv s0, a0
-	mul s1, s0, s0
-	mv a0, s1
+    # `mul a0, a0, a0` should be fine,
+    # programing as below just to demo we can contine use the stack
+    mv s0, a0
+    mul s1, s0, s0
+    mv a0, s1
 
-	# epilogue
-	lw s0, 0(sp)
-	lw s1, 4(sp)
-	addi sp, sp, 8
-	
-	ret
+    # epilogue
+    lw s0, 0(sp)
+    lw s1, 4(sp)
+    addi sp, sp, 8
 
-	# add nop here just for demo in gdb
-	nop
+    ret
+
+    # add nop here just for demo in gdb
+    nop
 
 stack_start:
     .rept 10
