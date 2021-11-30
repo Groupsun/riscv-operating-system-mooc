@@ -2145,3 +2145,347 @@ Remote communication error.  Target disconnected.: Broken pipe.
 ```
 
 最后结果a0(x10)为0xe(14)，即为最终结果。
+
+## 练习5-9
+
+在 C 函数中嵌入⼀段汇编，实现 foo 函数中的 `c = a * a + b * b;` 这句 c 语⾔的同等功能。
+
+```c
+int foo(int a, int b) {
+    int c;
+    c = a * a + b * b;
+    return c;
+}
+```
+
+`test.c`如下所示：
+
+```c
+int foo(int a, int b) {
+    int c;
+
+    asm volatile(
+        "mul %[a], %[a], %[a];"
+        "mul %[b], %[b], %[b];"
+        "add %[c], %[a], %[b];"
+        :[c]"=r"(c)
+        :[a]"r"(a), [b]"r"(b)
+    );
+
+    return c;
+}
+```
+
+复用`code/asm/c2asm`当中的`test.s`，编译调试：
+
+```bash
+$ make debug
+Press Ctrl-C and then input 'quit' to exit GDB and QEMU
+-------------------------------------------------------
+Reading symbols from test.elf...
+Breakpoint 1 at 0x80000000: file test.s, line 8.
+0x00001000 in ?? ()
+=> 0x00001000:  97 02 00 00     auipc   t0,0x0
+1: /z $sp = 0x00000000
+2: /z $ra = 0x00000000
+3: /z $s0 = 0x00000000
+4: /z $a0 = 0x00000000
+5: /z $a1 = 0x00000000
+6: /z $a4 = 0x00000000
+7: /z $a5 = 0x00000000
+
+Breakpoint 1, _start () at test.s:8
+8               la sp, stack_end        # prepare stack for calling functions
+=> 0x80000000 <_start+0>:       17 01 00 00     auipc   sp,0x0
+   0x80000004 <_start+4>:       13 01 41 04     addi    sp,sp,68 # 0x80000044 <foo>
+1: /z $sp = 0x00000000
+2: /z $ra = 0x00000000
+3: /z $s0 = 0x00000000
+4: /z $a0 = 0x00000000
+5: /z $a1 = 0x87000000
+6: /z $a4 = 0x00000000
+7: /z $a5 = 0x00000000
+(gdb) si
+0x80000004 in _start () at test.s:8
+8               la sp, stack_end        # prepare stack for calling functions
+   0x80000000 <_start+0>:       17 01 00 00     auipc   sp,0x0
+=> 0x80000004 <_start+4>:       13 01 41 04     addi    sp,sp,68 # 0x80000044 <foo>
+1: /z $sp = 0x80000000
+2: /z $ra = 0x00000000
+3: /z $s0 = 0x00000000
+4: /z $a0 = 0x00000000
+5: /z $a1 = 0x87000000
+6: /z $a4 = 0x00000000
+7: /z $a5 = 0x00000000
+(gdb) 
+_start () at test.s:10
+10              li a0, 1
+=> 0x80000008 <_start+8>:       13 05 10 00     li      a0,1
+1: /z $sp = 0x80000044
+2: /z $ra = 0x00000000
+3: /z $s0 = 0x00000000
+4: /z $a0 = 0x00000000
+5: /z $a1 = 0x87000000
+6: /z $a4 = 0x00000000
+7: /z $a5 = 0x00000000
+(gdb) 
+11              li a1, 2
+=> 0x8000000c <_start+12>:      93 05 20 00     li      a1,2
+1: /z $sp = 0x80000044
+2: /z $ra = 0x00000000
+3: /z $s0 = 0x00000000
+4: /z $a0 = 0x00000001
+5: /z $a1 = 0x87000000
+6: /z $a4 = 0x00000000
+7: /z $a5 = 0x00000000
+(gdb) 
+12              call foo
+=> 0x80000010 <_start+16>:      ef 00 40 03     jal     ra,0x80000044 <foo>
+1: /z $sp = 0x80000044
+2: /z $ra = 0x00000000
+3: /z $s0 = 0x00000000
+4: /z $a0 = 0x00000001
+5: /z $a1 = 0x00000002
+6: /z $a4 = 0x00000000
+7: /z $a5 = 0x00000000
+(gdb) 
+0x80000044 in foo ()
+=> 0x80000044 <foo+0>:  13 01 01 fd     addi    sp,sp,-48
+1: /z $sp = 0x80000044
+2: /z $ra = 0x80000014
+3: /z $s0 = 0x00000000
+4: /z $a0 = 0x00000001
+5: /z $a1 = 0x00000002
+6: /z $a4 = 0x00000000
+7: /z $a5 = 0x00000000
+(gdb) 
+0x80000048 in foo (a=0, b=0) at test.c:1
+1       int foo(int a, int b) {
+   0x80000044 <foo+0>:  13 01 01 fd     addi    sp,sp,-48
+=> 0x80000048 <foo+4>:  23 26 81 02     sw      s0,44(sp)
+   0x8000004c <foo+8>:  13 04 01 03     addi    s0,sp,48
+   0x80000050 <foo+12>: 23 2e a4 fc     sw      a0,-36(s0)
+   0x80000054 <foo+16>: 23 2c b4 fc     sw      a1,-40(s0)
+1: /z $sp = 0x80000014
+2: /z $ra = 0x80000014
+3: /z $s0 = 0x00000000
+4: /z $a0 = 0x00000001
+5: /z $a1 = 0x00000002
+6: /z $a4 = 0x00000000
+7: /z $a5 = 0x00000000
+(gdb) 
+0x8000004c      1       int foo(int a, int b) {
+   0x80000044 <foo+0>:  13 01 01 fd     addi    sp,sp,-48
+   0x80000048 <foo+4>:  23 26 81 02     sw      s0,44(sp)
+=> 0x8000004c <foo+8>:  13 04 01 03     addi    s0,sp,48
+   0x80000050 <foo+12>: 23 2e a4 fc     sw      a0,-36(s0)
+   0x80000054 <foo+16>: 23 2c b4 fc     sw      a1,-40(s0)
+1: /z $sp = 0x80000014
+2: /z $ra = 0x80000014
+3: /z $s0 = 0x00000000
+4: /z $a0 = 0x00000001
+5: /z $a1 = 0x00000002
+6: /z $a4 = 0x00000000
+7: /z $a5 = 0x00000000
+(gdb) 
+0x80000050      1       int foo(int a, int b) {
+   0x80000044 <foo+0>:  13 01 01 fd     addi    sp,sp,-48
+   0x80000048 <foo+4>:  23 26 81 02     sw      s0,44(sp)
+   0x8000004c <foo+8>:  13 04 01 03     addi    s0,sp,48
+=> 0x80000050 <foo+12>: 23 2e a4 fc     sw      a0,-36(s0)
+   0x80000054 <foo+16>: 23 2c b4 fc     sw      a1,-40(s0)
+1: /z $sp = 0x80000014
+2: /z $ra = 0x80000014
+3: /z $s0 = 0x80000044
+4: /z $a0 = 0x00000001
+5: /z $a1 = 0x00000002
+6: /z $a4 = 0x00000000
+7: /z $a5 = 0x00000000
+(gdb) 
+0x80000054      1       int foo(int a, int b) {
+   0x80000044 <foo+0>:  13 01 01 fd     addi    sp,sp,-48
+   0x80000048 <foo+4>:  23 26 81 02     sw      s0,44(sp)
+   0x8000004c <foo+8>:  13 04 01 03     addi    s0,sp,48
+   0x80000050 <foo+12>: 23 2e a4 fc     sw      a0,-36(s0)
+=> 0x80000054 <foo+16>: 23 2c b4 fc     sw      a1,-40(s0)
+1: /z $sp = 0x80000014
+2: /z $ra = 0x80000014
+3: /z $s0 = 0x80000044
+4: /z $a0 = 0x00000001
+5: /z $a1 = 0x00000002
+6: /z $a4 = 0x00000000
+7: /z $a5 = 0x00000000
+(gdb) 
+4           asm volatile(
+=> 0x80000058 <foo+20>: 83 27 c4 fd     lw      a5,-36(s0)
+   0x8000005c <foo+24>: 03 27 84 fd     lw      a4,-40(s0)
+   0x80000060 <foo+28>: b3 87 f7 02     mul     a5,a5,a5
+   0x80000064 <foo+32>: 33 07 e7 02     mul     a4,a4,a4
+   0x80000068 <foo+36>: b3 87 e7 00     add     a5,a5,a4
+   0x8000006c <foo+40>: 23 26 f4 fe     sw      a5,-20(s0)
+1: /z $sp = 0x80000014
+2: /z $ra = 0x80000014
+3: /z $s0 = 0x80000044
+4: /z $a0 = 0x00000001
+5: /z $a1 = 0x00000002
+6: /z $a4 = 0x00000000
+7: /z $a5 = 0x00000000
+(gdb) 
+0x8000005c      4           asm volatile(
+   0x80000058 <foo+20>: 83 27 c4 fd     lw      a5,-36(s0)
+=> 0x8000005c <foo+24>: 03 27 84 fd     lw      a4,-40(s0)
+   0x80000060 <foo+28>: b3 87 f7 02     mul     a5,a5,a5
+   0x80000064 <foo+32>: 33 07 e7 02     mul     a4,a4,a4
+   0x80000068 <foo+36>: b3 87 e7 00     add     a5,a5,a4
+   0x8000006c <foo+40>: 23 26 f4 fe     sw      a5,-20(s0)
+1: /z $sp = 0x80000014
+2: /z $ra = 0x80000014
+3: /z $s0 = 0x80000044
+4: /z $a0 = 0x00000001
+5: /z $a1 = 0x00000002
+6: /z $a4 = 0x00000000
+7: /z $a5 = 0x00000001
+(gdb) 
+0x80000060      4           asm volatile(
+   0x80000058 <foo+20>: 83 27 c4 fd     lw      a5,-36(s0)
+   0x8000005c <foo+24>: 03 27 84 fd     lw      a4,-40(s0)
+=> 0x80000060 <foo+28>: b3 87 f7 02     mul     a5,a5,a5
+   0x80000064 <foo+32>: 33 07 e7 02     mul     a4,a4,a4
+   0x80000068 <foo+36>: b3 87 e7 00     add     a5,a5,a4
+   0x8000006c <foo+40>: 23 26 f4 fe     sw      a5,-20(s0)
+1: /z $sp = 0x80000014
+2: /z $ra = 0x80000014
+3: /z $s0 = 0x80000044
+4: /z $a0 = 0x00000001
+5: /z $a1 = 0x00000002
+6: /z $a4 = 0x00000002
+7: /z $a5 = 0x00000001
+(gdb) 
+0x80000064      4           asm volatile(
+   0x80000058 <foo+20>: 83 27 c4 fd     lw      a5,-36(s0)
+   0x8000005c <foo+24>: 03 27 84 fd     lw      a4,-40(s0)
+   0x80000060 <foo+28>: b3 87 f7 02     mul     a5,a5,a5
+=> 0x80000064 <foo+32>: 33 07 e7 02     mul     a4,a4,a4
+   0x80000068 <foo+36>: b3 87 e7 00     add     a5,a5,a4
+   0x8000006c <foo+40>: 23 26 f4 fe     sw      a5,-20(s0)
+1: /z $sp = 0x80000014
+2: /z $ra = 0x80000014
+3: /z $s0 = 0x80000044
+4: /z $a0 = 0x00000001
+5: /z $a1 = 0x00000002
+6: /z $a4 = 0x00000002
+7: /z $a5 = 0x00000001
+(gdb) 
+0x80000068      4           asm volatile(
+   0x80000058 <foo+20>: 83 27 c4 fd     lw      a5,-36(s0)
+   0x8000005c <foo+24>: 03 27 84 fd     lw      a4,-40(s0)
+   0x80000060 <foo+28>: b3 87 f7 02     mul     a5,a5,a5
+   0x80000064 <foo+32>: 33 07 e7 02     mul     a4,a4,a4
+=> 0x80000068 <foo+36>: b3 87 e7 00     add     a5,a5,a4
+   0x8000006c <foo+40>: 23 26 f4 fe     sw      a5,-20(s0)
+1: /z $sp = 0x80000014
+2: /z $ra = 0x80000014
+3: /z $s0 = 0x80000044
+4: /z $a0 = 0x00000001
+5: /z $a1 = 0x00000002
+6: /z $a4 = 0x00000004
+7: /z $a5 = 0x00000001
+(gdb) 
+0x8000006c      4           asm volatile(
+   0x80000058 <foo+20>: 83 27 c4 fd     lw      a5,-36(s0)
+   0x8000005c <foo+24>: 03 27 84 fd     lw      a4,-40(s0)
+   0x80000060 <foo+28>: b3 87 f7 02     mul     a5,a5,a5
+   0x80000064 <foo+32>: 33 07 e7 02     mul     a4,a4,a4
+   0x80000068 <foo+36>: b3 87 e7 00     add     a5,a5,a4
+=> 0x8000006c <foo+40>: 23 26 f4 fe     sw      a5,-20(s0)
+1: /z $sp = 0x80000014
+2: /z $ra = 0x80000014
+3: /z $s0 = 0x80000044
+4: /z $a0 = 0x00000001
+5: /z $a1 = 0x00000002
+6: /z $a4 = 0x00000004
+7: /z $a5 = 0x00000005
+(gdb) 
+12          return c;
+=> 0x80000070 <foo+44>: 83 27 c4 fe     lw      a5,-20(s0)
+1: /z $sp = 0x80000014
+2: /z $ra = 0x80000014
+3: /z $s0 = 0x80000044
+4: /z $a0 = 0x00000001
+5: /z $a1 = 0x00000002
+6: /z $a4 = 0x00000004
+7: /z $a5 = 0x00000005
+(gdb) 
+13      }
+=> 0x80000074 <foo+48>: 13 85 07 00     mv      a0,a5
+   0x80000078 <foo+52>: 03 24 c1 02     lw      s0,44(sp)
+   0x8000007c <foo+56>: 13 01 01 03     addi    sp,sp,48
+   0x80000080 <foo+60>: 67 80 00 00     ret
+1: /z $sp = 0x80000014
+2: /z $ra = 0x80000014
+3: /z $s0 = 0x80000044
+4: /z $a0 = 0x00000001
+5: /z $a1 = 0x00000002
+6: /z $a4 = 0x00000004
+7: /z $a5 = 0x00000005
+(gdb) 
+0x80000078      13      }
+   0x80000074 <foo+48>: 13 85 07 00     mv      a0,a5
+=> 0x80000078 <foo+52>: 03 24 c1 02     lw      s0,44(sp)
+   0x8000007c <foo+56>: 13 01 01 03     addi    sp,sp,48
+   0x80000080 <foo+60>: 67 80 00 00     ret
+1: /z $sp = 0x80000014
+2: /z $ra = 0x80000014
+3: /z $s0 = 0x80000044
+4: /z $a0 = 0x00000005
+5: /z $a1 = 0x00000002
+6: /z $a4 = 0x00000004
+7: /z $a5 = 0x00000005
+(gdb) 
+0x8000007c      13      }
+   0x80000074 <foo+48>: 13 85 07 00     mv      a0,a5
+   0x80000078 <foo+52>: 03 24 c1 02     lw      s0,44(sp)
+=> 0x8000007c <foo+56>: 13 01 01 03     addi    sp,sp,48
+   0x80000080 <foo+60>: 67 80 00 00     ret
+1: /z $sp = 0x80000014
+2: /z $ra = 0x80000014
+3: /z $s0 = 0x00000000
+4: /z $a0 = 0x00000005
+5: /z $a1 = 0x00000002
+6: /z $a4 = 0x00000004
+7: /z $a5 = 0x00000005
+(gdb) 
+0x80000080      13      }
+   0x80000074 <foo+48>: 13 85 07 00     mv      a0,a5
+   0x80000078 <foo+52>: 03 24 c1 02     lw      s0,44(sp)
+   0x8000007c <foo+56>: 13 01 01 03     addi    sp,sp,48
+=> 0x80000080 <foo+60>: 67 80 00 00     ret
+1: /z $sp = 0x80000044
+2: /z $ra = 0x80000014
+3: /z $s0 = 0x00000000
+4: /z $a0 = 0x00000005
+5: /z $a1 = 0x00000002
+6: /z $a4 = 0x00000004
+7: /z $a5 = 0x00000005
+(gdb) 
+stop () at test.s:15
+15              j stop                  # Infinite loop to stop execution
+=> 0x80000014 <stop+0>: 6f 00 00 00     j       0x80000014 <stop>
+1: /z $sp = 0x80000044
+2: /z $ra = 0x80000014
+3: /z $s0 = 0x00000000
+4: /z $a0 = 0x00000005
+5: /z $a1 = 0x00000002
+6: /z $a4 = 0x00000004
+7: /z $a5 = 0x00000005
+(gdb) qemu-system-riscv32: terminating on signal 2
+Quit
+(gdb) quit
+A debugging session is active.
+
+        Inferior 1 [process 1] will be detached.
+
+Quit anyway? (y or n) y
+Detaching from program: /home/server/Documents/riscv-operating-system-mooc/code/asm/exer59/test.elf, process 1
+Remote communication error.  Target disconnected.: Broken pipe.
+```
